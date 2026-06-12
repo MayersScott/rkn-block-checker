@@ -29,6 +29,13 @@ if not _colors_enabled():
         setattr(C, _attr, "")
 
 
+def _get_flag_emoji(country_code: str) -> str:
+    if not country_code or len(country_code) != 2:
+        return "🌐"
+    
+    return "".join(chr(127397 + ord(char)) for char in country_code.upper())
+
+
 def _label_for(verdict: Verdict, confidence: Confidence) -> tuple[str, str]:
     if verdict == Verdict.OK:
         return C.GREEN, "✓ OK"
@@ -53,9 +60,9 @@ def _label_for(verdict: Verdict, confidence: Confidence) -> tuple[str, str]:
 
 
 def print_header(info: dict) -> None:
-    print(f"\n{C.BOLD}{C.CYAN}{'=' * 70}{C.RESET}")
+    print(f"\n{C.BOLD}{C.CYAN}{'=' * 80}{C.RESET}")
     print(f"{C.BOLD}{C.CYAN}  RKN Block Checker{C.RESET}")
-    print(f"{C.BOLD}{C.CYAN}{'=' * 70}{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}{'=' * 80}{C.RESET}")
     if info:
         print(f"  {C.DIM}IP:{C.RESET}       {info.get('ip', '?')}")
         print(f"  {C.DIM}ISP:{C.RESET}      {info.get('org', '?')}")
@@ -63,19 +70,19 @@ def print_header(info: dict) -> None:
         print(f"  {C.DIM}Location:{C.RESET} {loc}")
     else:
         print(f"  {C.YELLOW}couldn't fetch IP info{C.RESET}")
-    print(f"{C.BOLD}{C.CYAN}{'-' * 70}{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}{'-' * 80}{C.RESET}")
 
 
 def print_section(title: str) -> None:
     print(f"\n{C.BOLD}{title}{C.RESET}")
     print(
         f"  {C.DIM}{'name':<14}{'verdict':<22}"
-        f"{'TCP':>8}{'TLS':>8}{'PLT':>8}  {'status':<6}{C.RESET}"
+        f"{'TCP':>8}{'TLS':>8}{'PLT':>8}  {'status':<6}  {'GEO':<8}{C.RESET}"
     )
-    print(f"  {C.DIM}{'-' * 68}{C.RESET}")
+    print(f"  {C.DIM}{'-' * 78}{C.RESET}")
 
 
-def print_result(r: CheckResult) -> None:
+def print_result(r: CheckResult, country_code: str = "") -> None:
     color, label = _label_for(r.verdict, r.confidence)
 
     status = str(r.status_code) if r.status_code else "-"
@@ -85,11 +92,19 @@ def print_result(r: CheckResult) -> None:
 
     name_col = r.name[:14].ljust(14)
     label_col = label[:22].ljust(22)
+    
+    if country_code:
+        flag = _get_flag_emoji(country_code)
+        geo_str = f"[{flag} {country_code.upper()}]"
+    else:
+        geo_str = "[-]"
+
     print(
         f"  {name_col}"
         f"{color}{label_col}{C.RESET}"
         f"{tcp:>8}{tls:>8}{plt:>8}  "
-        f"{status:<6}"
+        f"{status:<6}  "
+        f"{geo_str:<8}"
     )
     for note in r.notes:
         print(f"    {C.DIM}└ {note}{C.RESET}")
@@ -108,9 +123,9 @@ def print_summary(white: list[CheckResult], black: list[CheckResult]) -> None:
         if r.verdict in BLOCKED_VERDICTS and r.confidence == Confidence.HIGH
     )
 
-    print(f"\n{C.BOLD}{C.CYAN}{'=' * 70}{C.RESET}")
+    print(f"\n{C.BOLD}{C.CYAN}{'=' * 80}{C.RESET}")
     print(f"{C.BOLD}  Summary{C.RESET}")
-    print(f"{C.BOLD}{C.CYAN}{'-' * 70}{C.RESET}")
+    print(f"{C.BOLD}{C.CYAN}{'-' * 80}{C.RESET}")
     print(f"  Whitelist: {white_ok}/{len(white)} working")
     print(
         f"  Blacklist: {black_ok}/{len(black)} open, "
@@ -133,7 +148,7 @@ def print_summary(white: list[CheckResult], black: list[CheckResult]) -> None:
             type_color, label = _label_for(verdict_type, Confidence.HIGH)
             print(f"    {type_color}{label}{C.RESET}: {count}")
 
-    print(f"{C.BOLD}{C.CYAN}{'=' * 70}{C.RESET}\n")
+    print(f"{C.BOLD}{C.CYAN}{'=' * 80}{C.RESET}\n")
 
 
 def _summary_verdict(
@@ -145,12 +160,6 @@ def _summary_verdict(
     black_high_conf: int = 0,
     black_timeout: int = 0,
 ) -> tuple[str, str, str]:
-    """Return (color, verdict line, confidence note).
-
-    The confidence note explains *why* we report what we report - and in
-    particular whether the whitelist control is healthy enough for the
-    blacklist signal to be trustworthy.
-    """
     effective_total = black_total - black_timeout
 
     if white_total > 0 and white_ok < white_total / 2:
@@ -187,7 +196,7 @@ def _summary_verdict(
             )
         return (
             C.RED,
-            "Likely in an RKN-blocked zone (medium confidence).",
+            "Likely in an an RKN-blocked zone (medium confidence).",
             "Most blacklist failures match censorship patterns (TLS DPI, "
             "TCP RST), but those signals can also be caused by server-side "
             "issues. A control vantage point would confirm.",
