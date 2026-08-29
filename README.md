@@ -143,6 +143,31 @@ rkn-check --json | jq '.blacklist | group_by(.verdict)
 rkn-check --json | jq '.blacklist[] | select(.verdict == "TLS_BLOCK" and .tcp_ok)'
 ```
 
+### Probing through a proxy
+
+```bash
+pip install 'rkn-block-checker[proxy]'
+
+rkn-check --proxy socks5://192.168.2.11:1080
+rkn-check --proxy socks5h://127.0.0.1:1080     # DNS resolved proxy-side
+rkn-check --proxy http://user:pass@proxy.local:8080
+```
+
+Supported schemes: `socks5`, `socks5h`, `socks4`, `http`. A port is
+mandatory. SOCKS support needs the `proxy` extra (PySocks); without it
+the flag exits with an error rather than silently probing direct.
+
+**The system DNS lookup is deliberately not proxied.** Its whole job is
+to show what the *local* resolver claims, so it can be compared against
+the DoH control - and that comparison is the only way to see ISP-level
+DNS poisoning. Route both sides through the proxy and you lose the
+signal. Everything else - TCP, TLS, HTTP, and the DoH lookup - goes
+through the proxy.
+
+This is the flag to reach for when you have a vantage point on a
+different path (a router's SOCKS inbound, a VPS, a phone's hotspot) and
+want to compare it against the connection you're sitting on.
+
 ### Use your own target lists
 
 ```bash
@@ -168,7 +193,7 @@ your IP).
 rkn-check [-h] [--json] [--white] [--black]
           [--white-file PATH] [--black-file PATH] [--url URL]
           [--timeout TIMEOUT] [--workers WORKERS] [-v]
-          [--no-self-info] [--identify]
+          [--no-self-info] [--identify] [--proxy URL]
 ```
 
 | flag | what it does |
@@ -183,6 +208,7 @@ rkn-check [-h] [--json] [--white] [--black]
 | `--workers N` | thread pool size for parallel checks (default 10) |
 | `--no-self-info` | skip the public-IP lookup at the top of the report |
 | `--identify` | send a self-identifying User-Agent instead of a generic Chrome one. See [Privacy](#privacy-and-threat-model) |
+| `--proxy URL` | route the TCP/TLS/HTTP probes and the DoH control lookup through a proxy. See [Probing through a proxy](#probing-through-a-proxy) |
 | `-v` / `-vv` | logging at INFO / DEBUG |
 
 `--white` and `--black` are mutually exclusive. `--url` cannot be combined
@@ -200,6 +226,11 @@ first thing that fails. Whichever layer broke becomes the verdict.
 | TCP  | plain TCP handshake on `:443` | a `RST` is IP-level blackholing. Rare - most ISPs don't bother |
 | TLS  | TLS handshake with SNI = target host | reset/timeout *here*, with TCP working fine, is the classic TSPU/DPI signature: the middlebox sees the SNI and tears the connection down |
 | HTTP | `GET` after handshake completes | 451, or an ISP stub page returning 200 with a "blocked by Roskomnadzor" body |
+
+Alongside the verdict, each row carries the **country of the target's
+IP** (the `GEO` column) - useful for spotting that a "working" site is
+actually being served from somewhere unexpected. See
+[Privacy](#privacy-and-threat-model) for what that lookup costs you.
 
 Two probes are worth calling out:
 
@@ -277,10 +308,21 @@ for the human reading the report - the diagnosis itself doesn't depend
 on it. Pass `--no-self-info` to skip that lookup entirely; that's also
 the right thing to do in cron scripts and in CI.
 
+**Target GeoIP.** To fill the `GEO` column the tool resolves each target
+through the *system* resolver and POSTs the resulting IP list to
+`ip-api.com` in one batch. Two caveats worth knowing: the request goes
+over plain **HTTP** (that's what the free tier offers), and it is **not**
+routed through `--proxy` - so with a proxy configured, the flag shown is
+the country of whatever the local resolver returned, which is exactly the
+answer you don't trust if DNS is being poisoned. The lookup is
+best-effort: it has a 3s timeout and any failure just leaves the column
+empty.
+
 **No telemetry.** The tool doesn't phone home. The only outbound
 connections are: the per-target probes you asked for, the DoH lookup to
 `cloudflare-dns.com` (always on - it's the control side of the DNS
-comparison), and the optional `ipinfo.io` lookup unless you disabled it.
+comparison), the `ip-api.com` GeoIP batch described above, and the
+optional `ipinfo.io` lookup unless you disabled it.
 
 **No exfil of probe results.** Results are printed to stdout. They go
 nowhere else.
