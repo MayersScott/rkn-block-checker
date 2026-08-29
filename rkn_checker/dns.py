@@ -19,7 +19,8 @@ def resolve_system_all(host: str) -> frozenset[str]:
     except socket.gaierror as e:
         logger.debug("system DNS failed for %s: %s", host, e)
         return frozenset()
-    return frozenset(info[4][0] for info in infos)
+    # sockaddr is typed (str, int) for AF_INET; str() pins the element type
+    return frozenset(str(info[4][0]) for info in infos)
 
 
 def resolve_doh_all(
