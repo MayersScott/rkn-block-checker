@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RKN Block Checker</title>
+    <style>
+        :root {
+            --bg-body: #f3f4f6; --bg-panel: #ffffff;
+            --text-main: #1f2937; --text-muted: #6b7280;
+            --border-color: #e5e7eb; --primary: #2563eb;
+            --primary-hover: #1d4ed8; --success: #10b981;
+            --danger: #ef4444; --warning: #f59e0b; --idle: #9ca3af;
+        }
+        body { font-family: system-ui, -apple-system, sans-serif; color: var(--text-main); background: var(--bg-body); margin: 0; padding: 20px; font-size: 14px; box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; }
+        * { box-sizing: border-box; }
+        header { background: var(--bg-panel); padding: 15px 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
+        h1 { margin: 0 0 5px 0; font-size: 22px; color: #111827; }
+        .header-actions { margin-top: 15px; display: flex; align-items: center; gap: 15px; font-size: 13px; color: var(--text-muted); }
+        button { padding: 6px 12px; background: #fff; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; font-size: 13px; color: var(--text-main); transition: all 0.2s; }
+        button:hover { background: #f9fafb; border-color: #9ca3af; }
+        button.primary { background: var(--primary); color: #fff; border: none; }
+        button.primary:hover { background: var(--primary-hover); }
+        input[type="text"], input[type="number"], select { padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 13px; outline: none; transition: border-color 0.2s; }
+        input:focus, select:focus { border-color: var(--primary); }
+        .workspace { display: flex; gap: 20px; flex: 1; min-height: 0; }
+        .panel { flex: 1; background: var(--bg-panel); border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow-y: auto; }
+        .panel h2 { margin-top: 0; font-size: 18px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 15px; }
+        fieldset { border: 1px solid var(--border-color); border-radius: 6px; padding: 15px; margin-bottom: 15px; background: #fafafa; }
+        legend { font-weight: 600; color: #4b5563; background: var(--bg-panel); padding: 0 8px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 13px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; background: #fff; border: 1px solid var(--border-color); }
+        th, td { padding: 8px 10px; border-bottom: 1px solid var(--border-color); text-align: left; font-size: 13px; }
+        th { background: #f9fafb; font-weight: 600; color: var(--text-muted); }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; color: #fff; }
+        .badge.idle { background: var(--idle); } .badge.ok { background: var(--success); } .badge.error { background: var(--danger); } .badge.warn { background: var(--warning); color: #000; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 99; align-items: center; justify-content: center; }
+        .modal { background: var(--bg-panel); border-radius: 8px; padding: 24px; width: 90%; max-width: 600px; max-height: 85vh; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .modal h2, .modal h3 { margin-top: 0; } .modal hr { border: none; border-top: 1px solid var(--border-color); margin: 15px 0; }
+        footer { margin-top: 20px; padding-top: 15px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; align-items: center; color: var(--text-muted); font-size: 12px; }
+        .mono { font-family: monospace; font-size: 12px; color: var(--text-muted); }
+        ul { margin: 5px 0; padding-left: 20px; } label { cursor: pointer; }
+        progress { width: 100%; height: 8px; margin-top: 10px; border-radius: 4px; }
+        progress::-webkit-progress-bar { background-color: var(--border-color); border-radius: 4px; }
+        progress::-webkit-progress-value { background-color: var(--primary); border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-top">
+            <div>
+                <h1 id="titleText">RKN Block Checker</h1>
+                <div id="descText" style="color: var(--text-muted); font-size: 13px;">Network diagnostics & censorship analysis by MayersScott / Dmitry Vinogradov</div>
+            </div>
+        </div>
+        <div class="header-actions">
+            <span id="statusText">Connection status: <b>Ready</b></span> |
+            <span id="lastScanText">Last scan: <b>Never</b></span>
+            <div style="flex: 1;"></div>
+            <span id="versionText">RKN Block Checker | MIT License | Python 3.10+</span>
+        </div>
+        <progress id="progressBar" value="0" max="100" style="display: none;"></progress>
+    </header>
+
+    <div class="workspace">
+        <div class="panel">
+            <h2 id="targetsTitle">Targets & Results</h2>
+            <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+                <label id="searchLabel" style="font-size: 13px; font-weight: 500;">Search:</label>
+                <input type="text" id="searchInput" style="flex: 1;" placeholder="...">
+            </div>
+            <fieldset>
+                <legend><b id="wlTitle">Whitelist</b> (<span id="wlCounter">0</span>)</legend>
+                <div id="wlDesc" style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">Control targets — should normally work</div>
+                <table>
+                    <thead><tr><th id="thDomain1">Domain / URL</th><th id="thStatus1" style="width: 80px;">Status</th><th id="thMetrics1">Metrics</th><th id="thActions1" style="width: 60px;">Actions</th></tr></thead>
+                    <tbody id="whitelistContainer"></tbody>
+                </table>
+            </fieldset>
+            <fieldset>
+                <legend><b id="blTitle">Blacklist & Custom</b> (<span id="blCounter">0</span>)</legend>
+                <div id="blDesc" style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">RKN-restricted / monitored targets</div>
+                <table>
+                    <thead><tr><th id="thDomain2">Domain / URL</th><th id="thStatus2" style="width: 80px;">Status</th><th id="thMetrics2">Metrics</th><th id="thActions2" style="width: 60px;">Actions</th></tr></thead>
+                    <tbody id="blacklistContainer"></tbody>
+                </table>
+            </fieldset>
+        </div>
+
+        <div class="panel">
+            <h2 id="configTitle">Configuration</h2>
+            <fieldset>
+                <legend id="customTitle">Custom targets</legend>
+                <div id="customDesc" style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">Run diagnostics against specific URLs.</div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="customInput" placeholder="URL or hostname" style="flex: 1;">
+                    <button id="addCustomBtn">Add URL</button>
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend id="netTitle">Network Settings</legend>
+                <div style="display: flex; gap: 20px;">
+                    <div>
+                        <label id="timeoutLabel" style="display: block; font-size: 12px; margin-bottom: 4px;">Timeout (s):</label>
+                        <input type="number" id="timeoutInput" value="5.0" step="0.5" style="width: 80px;">
+                    </div>
+                    <div>
+                        <label id="workersLabel" style="display: block; font-size: 12px; margin-bottom: 4px;">Parallel Workers:</label>
+                        <input type="number" id="workersInput" value="10" min="1" style="width: 80px;">
+                    </div>
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend id="privacyTitle">Privacy & self-identification</legend>
+                <label style="display: block; margin-bottom: 6px;"><input type="checkbox" id="pubIpCheck" checked> <span id="pubIpLabel">Public IP / ISP lookup (in report)</span></label>
+                <label style="display: block;"><input type="checkbox" id="identCheck"> <span id="identLabel">Identify diagnostic client (RKN User-Agent)</span></label>
+                <div style="font-size: 11px; color: var(--success); margin-top: 8px; font-weight: 500;">✓ No telemetry, no probe-result exfiltration</div>
+            </fieldset>
+        </div>
+
+        <div class="panel">
+            <h2 id="summaryPanelTitle">Diagnostic Summary</h2>
+            <div id="summaryPlaceholder" style="color: var(--text-muted); text-align: center; padding: 40px 0;">
+                <svg style="width: 40px; height: 40px; color: #d1d5db; margin-bottom: 10px;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                <br><span id="placeholderText">Run diagnostics to see the summary.</span>
+            </div>
+            <div id="summarySection" style="display: none;">
+                <div style="background: #fef2f2; border: 1px solid #fca5a5; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+                    <div id="summaryVerdict" style="font-weight: bold; font-size: 15px;"></div>
+                    <div id="summaryText" style="margin-top: 5px; font-size: 13px;"></div>
+                </div>
+                <h3 id="summaryTitle" style="font-size: 14px; margin-bottom: 10px;">Results Overview</h3>
+                <ul id="summaryStats" style="font-size: 13px; margin-bottom: 20px;"></ul>
+                <h3 style="font-size: 14px; margin-bottom: 10px;">Most common blocks:</h3>
+                <div id="blocksList" style="background: #f9fafb; border: 1px solid var(--border-color); padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px; margin-bottom: 20px;"></div>
+                <button id="viewReportBtn" style="width: 100%;">View full report</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <div style="display: flex; gap: 10px;">
+            <button id="clearBtn" onclick="clearResults()">Clear results</button>
+            <button id="runBtn" class="primary" onclick="runDiagnostics()">Run diagnostics</button>
+        </div>
+        <button id="langToggleBtn" onclick="toggleLanguage()">Переключить на Русский</button>
+    </footer>
+
+    <div id="targetModalOverlay" class="modal-overlay" onclick="closeModal('targetModalOverlay')">
+        <div class="modal" onclick="event.stopPropagation()">
+            <h2 id="modalDomain" style="margin-bottom: 5px;"></h2>
+            <div id="modalUrl" class="mono"></div>
+            <hr>
+            <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 15px;">
+                <div><b>Status:</b> <span id="modalStatusBadge" class="badge"></span></div>
+                <div><b>Confidence:</b> <span id="modalConfBadge" class="badge warn"></span></div>
+            </div>
+            <h3 id="diagTitle" style="font-size: 15px; background: #f3f4f6; padding: 8px; border-radius: 4px;">Diagnostic Timeline</h3>
+            <ul id="modalDiagTimeline" style="font-size: 13px; line-height: 1.6;"></ul>
+            <hr>
+            <h3 id="concTitle" style="font-size: 15px; color: var(--danger);">Diagnostic Conclusion</h3>
+            <b id="modalVerdict" style="font-family: monospace; font-size: 16px;"></b>
+            <div id="modalNotes" style="font-size: 13px; color: var(--text-muted); margin-top:5px;"></div>
+            <div style="text-align: right; margin-top: 20px;"><button onclick="closeModal('targetModalOverlay')" id="closeBtn1">Close</button></div>
+        </div>
+    </div>
+
+    <!-- МОДАЛКА JSON -->
+    <div id="fullReportOverlay" class="modal-overlay" onclick="closeModal('fullReportOverlay')">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width: 700px;">
+            <h2 id="fullRepTitle">Full Diagnostic Report</h2>
+            <hr>
+            <h3 id="selfInfoTitle" style="font-size: 15px;">Self Information</h3>
+            <div id="modalSelfInfo" style="background: #f9fafb; border: 1px solid var(--border-color); padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px;"></div>
+            <hr>
+            <h3 id="jsonTitle" style="font-size: 15px;">JSON Export</h3>
+            <textarea id="jsonExportTextarea" style="width: 100%; height: 200px; font-family: monospace; font-size: 12px; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical;" readonly></textarea>
+            <div style="text-align: right; margin-top: 20px;"><button onclick="closeModal('fullReportOverlay')" id="closeBtn2">Close</button></div>
+        </div>
+    </div>
+
+    <script>
+        const i18n = {
+            en: { titleText: "RKN Block Checker", descText: "Network diagnostics & censorship analysis", statusText: "Status: <b>Ready</b>", lastScanText: "Last scan: <b>Never</b>", runBtn: "Run diagnostics", clearBtn: "Clear results", runBtnActive: "Running...", targetsTitle: "Targets & Results", searchLabel: "Search:", wlTitle: "Whitelist", wlDesc: "Control targets — should normally work", blTitle: "Blacklist & Custom", blDesc: "RKN-restricted / monitored targets", thDomain1: "Domain / URL", thStatus1: "Status", thMetrics1: "Metrics", thActions1: "Actions", thDomain2: "Domain / URL", thStatus2: "Status", thMetrics2: "Metrics", thActions2: "Actions", summaryPanelTitle: "Diagnostic Summary", placeholderText: "Run diagnostics to see the summary.", summaryTitle: "Results Overview", viewReportBtn: "View full report", configTitle: "Configuration", customTitle: "Custom targets", customDesc: "Run diagnostics against specific URLs.", addCustomBtn: "Add URL", netTitle: "Network Settings", timeoutLabel: "Timeout (s):", workersLabel: "Parallel Workers:", privacyTitle: "Privacy & self-identification", pubIpLabel: "Public IP / ISP lookup", identLabel: "Identify diagnostic client (RKN User-Agent)", langToggleBtn: "Переключить на Русский", btnReport: "Report", btnDelete: "Delete", diagTitle: "Diagnostic Timeline", concTitle: "Diagnostic Conclusion", closeBtn1: "Close", closeBtn2: "Close", fullRepTitle: "Full Diagnostic Report", selfInfoTitle: "Self Information", jsonTitle: "JSON Export" },
+            ru: { titleText: "RKN Block Checker", descText: "Сетевая диагностика и анализ блокировок", statusText: "Статус: <b>Готов</b>", lastScanText: "Последний скан: <b>Никогда</b>", runBtn: "Запустить диагностику", clearBtn: "Очистить результаты", runBtnActive: "Выполнение...", targetsTitle: "Цели и результаты", searchLabel: "Поиск:", wlTitle: "Белый список", wlDesc: "Контрольные цели — должны работать", blTitle: "Черный список и Свои", blDesc: "Ограниченные РКН / мониторинговые цели", thDomain1: "Домен / URL", thStatus1: "Статус", thMetrics1: "Метрики", thActions1: "Действия", thDomain2: "Домен / URL", thStatus2: "Статус", thMetrics2: "Метрики", thActions2: "Действия", summaryPanelTitle: "Сводка диагностики", placeholderText: "Запустите диагностику для просмотра сводки.", summaryTitle: "Обзор результатов", viewReportBtn: "Открыть полный отчет", configTitle: "Конфигурация", customTitle: "Свои цели", customDesc: "Проверка специфичных URL.", addCustomBtn: "Добавить", netTitle: "Сетевые настройки", timeoutLabel: "Таймаут (с):", workersLabel: "Потоки:", privacyTitle: "Приватность и идентификация", pubIpLabel: "Поиск публичного IP / Провайдера", identLabel: "Идентифицировать клиент (RKN User-Agent)", langToggleBtn: "Switch to English", btnReport: "Отчет", btnDelete: "Удалить", diagTitle: "Таймлайн диагностики", concTitle: "Заключение", closeBtn1: "Закрыть", closeBtn2: "Закрыть", fullRepTitle: "Полный отчет диагностики", selfInfoTitle: "Собственная информация", jsonTitle: "Экспорт JSON" }
+        };
+
+        let currentLang = 'en';
+        let state = { isRunning: false, scanned: false, whitelist: [], blacklist: [], selfInfo: null, version: '' };
+
+        function toggleLanguage() {
+            currentLang = currentLang === 'en' ? 'ru' : 'en';
+            applyLocalization(); renderLists();
+            if(state.scanned) generateSummary();
+        }
+
+        function applyLocalization() {
+            const dict = i18n[currentLang];
+            for (let key in dict) {
+                const el = document.getElementById(key);
+                if (el) el.innerHTML = dict[key];
+            }
+            document.getElementById('runBtn').innerText = state.isRunning ? dict.runBtnActive : dict.runBtn;
+        }
+
+        async function loadInit() {
+            try {
+                const res = await fetch('/api/init');
+                const data = await res.json();
+                state.version = data.meta.version;
+                document.getElementById('versionText').innerText = `RKN Block Checker v${state.version} | MIT License | Python 3.10+`;
+                
+                state.whitelist = data.whitelist.map(t => ({ domain: t.name, url: t.url, isCustom: false, currentStatus: 'IDLE', result: null }));
+                state.blacklist = data.blacklist.map(t => ({ domain: t.name, url: t.url, isCustom: false, currentStatus: 'IDLE', result: null }));
+                renderLists();
+
+                if (document.getElementById('pubIpCheck').checked) {
+                    fetch('/api/self-info').then(r => r.json()).then(info => state.selfInfo = info).catch(console.error);
+                }
+            } catch(e) { console.error("API Error", e); }
+        }
+
+        window.onload = () => {
+            applyLocalization();
+            loadInit();
+        };
+
+        function getBadgeHtml(status) {
+            if (status === 'IDLE') return `<span class="badge idle">IDLE</span>`;
+            if (status === 'Checking...') return `<span class="badge idle">...</span>`;
+            if (status === 'OK') return `<span class="badge ok">✓ OK</span>`;
+            if (status === 'TIMEOUT') return `<span class="badge warn">! TIMEOUT</span>`;
+            return `<span class="badge error">✗ ${status}</span>`;
+        }
+
+        function getMetricsStr(r) {
+            if (!r) return '—';
+            let p = [];
+            if (r.tcp_time_ms !== null) p.push(`TCP ${Math.round(r.tcp_time_ms)}ms`); else if (r.tcp_error) p.push(`TCP Err`);
+            if (r.tls_time_ms !== null) p.push(`TLS ${Math.round(r.tls_time_ms)}ms`); else if (r.tls_error) p.push(`TLS Err`);
+            if (r.plt_ms !== null) p.push(`HTTP ${Math.round(r.plt_ms)}ms`);
+            return p.join(' · ') || '—';
+        }
+
+        function removeTarget(domain) {
+            if(state.isRunning) return;
+            state.whitelist = state.whitelist.filter(t => t.domain !== domain);
+            state.blacklist = state.blacklist.filter(t => t.domain !== domain);
+            renderLists();
+        }
+
+        document.getElementById('addCustomBtn').addEventListener('click', () => {
+            const val = document.getElementById('customInput').value.trim();
+            if(!val) return;
+            const url = val.includes('://') ? val : 'https://' + val;
+            let domain = url.replace(/^https?:\/\//, '').split('/')[0];
+            let n = 2; let base = domain;
+            while ([...state.whitelist, ...state.blacklist].find(t => t.domain === domain)) { domain = `${base}-${n}`; n++; }
+            state.blacklist.push({ domain, url, isCustom: true, currentStatus: 'IDLE', result: null });
+            document.getElementById('customInput').value = '';
+            renderLists();
+        });
+
+        function renderRow(target) {
+            let status = state.scanned && target.result ? target.result.verdict : target.currentStatus;
+            let metrics = state.scanned && target.result ? getMetricsStr(target.result) : '—';
+            let actions = target.result ? `<button onclick="openTargetReport('${target.domain}')" style="padding: 4px 8px; font-size: 11px;">${i18n[currentLang].btnReport}</button>` : '';
+            if (target.isCustom) actions += `<button onclick="removeTarget('${target.domain}')" style="padding: 4px 8px; font-size: 11px; margin-left: 5px; color: var(--danger); border-color: #fca5a5;">✕</button>`;
+            
+            return `<tr>
+                <td><div style="font-weight: 500; color: #111827;">${target.domain}</div><div class="mono">${target.url}</div></td>
+                <td>${getBadgeHtml(status)}</td>
+                <td style="color: #6b7280; font-size: 12px;">${metrics}</td>
+                <td><div style="display: flex; gap: 5px;">${actions}</div></td>
+            </tr>`;
+        }
+
+        function renderLists() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const filterFn = t => t.domain.toLowerCase().includes(search) || t.url.toLowerCase().includes(search);
+            document.getElementById('whitelistContainer').innerHTML = state.whitelist.filter(filterFn).map(renderRow).join('');
+            document.getElementById('blacklistContainer').innerHTML = state.blacklist.filter(filterFn).map(renderRow).join('');
+            document.getElementById('wlCounter').innerText = state.whitelist.length;
+            document.getElementById('blCounter').innerText = state.blacklist.length;
+        }
+        document.getElementById('searchInput').addEventListener('input', renderLists);
+
+        async function runDiagnostics() {
+            if (state.isRunning) return;
+            state.isRunning = true; state.scanned = false;
+            
+            document.getElementById('summarySection').style.display = 'none';
+            document.getElementById('summaryPlaceholder').style.display = 'block';
+            document.getElementById('placeholderText').innerText = i18n[currentLang].runBtnActive;
+            const btn = document.getElementById('runBtn'); btn.innerText = i18n[currentLang].runBtnActive; btn.style.opacity = '0.7';
+            const pBar = document.getElementById('progressBar'); pBar.style.display = 'block'; pBar.value = 0;
+
+            const targetsMap = {};
+            [...state.whitelist, ...state.blacklist].forEach(t => {
+                targetsMap[t.domain] = t.url;
+                t.currentStatus = 'Checking...'; t.result = null;
+            });
+            renderLists();
+
+            if (document.getElementById('pubIpCheck').checked && !state.selfInfo) {
+                fetch('/api/self-info').then(r => r.json()).then(info => state.selfInfo = info).catch(()=>{});
+            }
+
+            try {
+                const response = await fetch('/api/scan', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        targets: targetsMap,
+                        workers: parseInt(document.getElementById('workersInput').value) || 10,
+                        timeout: parseFloat(document.getElementById('timeoutInput').value) || 5.0,
+                        identify: document.getElementById('identCheck').checked
+                    })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let completed = 0;
+                const total = Object.keys(targetsMap).length;
+
+                while (true) {
+                    const {value, done} = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, {stream: true});
+                    let lines = buffer.split('\n');
+                    buffer = lines.pop();
+
+                    for (let line of lines) {
+                        if (!line.trim()) continue;
+                        const res = JSON.parse(line);
+                        
+                        let t = [...state.whitelist, ...state.blacklist].find(x => x.domain === res.name);
+                        if (t) { t.result = res; t.currentStatus = res.verdict; }
+                        completed++; pBar.value = (completed / total) * 100;
+                        renderLists();
+                    }
+                }
+            } catch(e) { console.error("Scan Error", e); }
+
+            state.isRunning = false; state.scanned = true;
+            btn.innerText = i18n[currentLang].runBtn; btn.style.opacity = '1'; pBar.style.display = 'none';
+            document.getElementById('summaryPlaceholder').style.display = 'none';
+            document.getElementById('summarySection').style.display = 'block';
+            document.getElementById('lastScanText').innerHTML = (currentLang === 'ru' ? 'Последний скан: ' : 'Last scan: ') + '<b>' + new Date().toLocaleTimeString() + '</b>';
+            
+            generateSummary();
+            renderLists();
+        }
+
+        function clearResults() {
+            if(state.isRunning) return;
+            state.scanned = false;
+            state.whitelist.forEach(t => { t.currentStatus = 'IDLE'; t.result = null; });
+            state.blacklist.forEach(t => { t.currentStatus = 'IDLE'; t.result = null; });
+            document.getElementById('summarySection').style.display = 'none';
+            document.getElementById('summaryPlaceholder').style.display = 'block';
+            document.getElementById('placeholderText').innerText = i18n[currentLang].placeholderText;
+            document.getElementById('lastScanText').innerHTML = (currentLang === 'ru' ? 'Последний скан: ' : 'Last scan: ') + '<b>' + (currentLang==='ru'?'Никогда':'Never') + '</b>';
+            renderLists();
+        }
+
+        function generateSummary() {
+            const white = state.whitelist.filter(t => t.result).map(t => t.result);
+            const black = state.blacklist.filter(t => t.result).map(t => t.result);
+            
+            const w_ok = white.filter(r => r.verdict === 'OK').length;
+            const b_ok = black.filter(r => r.verdict === 'OK').length;
+            const b_time = black.filter(r => r.verdict === 'TIMEOUT').length;
+            
+            const blocked_v = ['DNS_BLOCK', 'TCP_RESET', 'TLS_BLOCK', 'HTTP_STUB'];
+            const b_blocked = black.filter(r => blocked_v.includes(r.verdict)).length;
+            const b_high = black.filter(r => blocked_v.includes(r.verdict) && r.confidence === 'HIGH').length;
+            const effective = black.length - b_time;
+            
+            let color, title, desc;
+            if (white.length > 0 && w_ok < white.length / 2) {
+                color = 'var(--warning)';
+                title = currentLang === 'ru' ? 'Неоднозначно' : 'Inconclusive';
+                desc = currentLang === 'ru' ? 'Белый список также не работает. Возможно проблема с сетью.' : "Control whitelist is also failing. Check local network.";
+            } else if (effective <= 0) {
+                color = 'var(--warning)';
+                title = currentLang === 'ru' ? 'Неоднозначно' : 'Inconclusive';
+                desc = currentLang === 'ru' ? 'Все запросы завершились по таймауту.' : "All blacklist probes timed out.";
+            } else if (b_blocked === 0 && b_ok === effective) {
+                color = 'var(--success)';
+                title = currentLang === 'ru' ? 'Вне зоны блокировок РКН (или под VPN)' : 'Likely NOT in an RKN-blocked zone (or masked by VPN)';
+                desc = currentLang === 'ru' ? 'Все сайты загружаются штатно.' : 'All blacklisted sites loaded normally.';
+            } else if (b_blocked >= effective * 0.7) {
+                color = 'var(--danger)';
+                if (effective > 0 && b_high >= effective * 0.5) {
+                    title = currentLang === 'ru' ? 'В зоне блокировок РКН (Высокая уверенность)' : 'Likely in an RKN-blocked zone (High confidence)';
+                    desc = currentLang === 'ru' ? 'Множество ошибок совпадает с явными признаками цензуры (подмена DNS, HTTP 451).' : 'Most blacklist failures match high-confidence patterns.';
+                } else {
+                    title = currentLang === 'ru' ? 'В зоне блокировок РКН (Средняя уверенность)' : 'Likely in an RKN-blocked zone (Medium confidence)';
+                    desc = currentLang === 'ru' ? 'Большинство ошибок совпадает с паттернами цензуры, но нельзя исключить проблемы на сервере.' : 'Most blacklist failures match censorship patterns (DPI / TCP Reset).';
+                }
+            } else {
+                color = 'var(--warning)';
+                title = currentLang === 'ru' ? 'Частичные блокировки' : 'Partial blocks';
+                desc = currentLang === 'ru' ? 'Некоторые запрещенные сайты все еще загружаются.' : 'Mixed signals. Some blacklisted sites still load.';
+            }
+            
+            const vDiv = document.getElementById('summaryVerdict'); vDiv.innerText = title; vDiv.style.color = color;
+            document.getElementById('summaryText').innerText = desc;
+            
+            document.getElementById('summaryStats').innerHTML = `
+                <li><b>Whitelist:</b> <span style="color: ${w_ok === white.length ? 'var(--success)' : 'var(--danger)'};">${w_ok} / ${white.length} OK</span></li>
+                <li><b>Blacklist:</b> <span style="color: var(--success);">${b_ok} OK</span> / <span style="color: var(--danger);">${b_blocked} Blocked</span></li>`;
+            
+            const bCounts = {};
+            black.forEach(r => { if (blocked_v.includes(r.verdict)) bCounts[r.verdict] = (bCounts[r.verdict] || 0) + 1; });
+            document.getElementById('blocksList').innerHTML = Object.entries(bCounts).map(([k, v]) => `${k}: ${v}`).join('<br>') || (currentLang === 'ru' ? 'Нет блокировок' : 'None');
+        }
+
+        function openTargetReport(domain) {
+            const target = [...state.whitelist, ...state.blacklist].find(t => t.domain === domain);
+            if(!target || !target.result) return;
+            const r = target.result;
+            
+            document.getElementById('modalDomain').innerText = domain;
+            document.getElementById('modalUrl').innerText = target.url;
+            
+            const badge = document.getElementById('modalStatusBadge');
+            badge.innerText = r.verdict;
+            badge.className = (r.verdict === 'OK') ? 'badge ok' : (r.verdict === 'TIMEOUT' ? 'badge warn' : 'badge error');
+            document.getElementById('modalConfBadge').innerText = r.confidence;
+            
+            let dHtml = '';
+            // DNS
+            let dnsStr = 'System DNS Failed, DoH Failed';
+            if(r.sys_ips.length && r.doh_ips.length) dnsStr = r.dns_mismatch ? 'DNS Mismatch (Resolved to different IPs)' : 'System DNS OK, DoH OK (Match)';
+            else if (r.doh_ips.length) dnsStr = 'System DNS Failed, DoH OK';
+            dHtml += `<li><b>DNS:</b> ${dnsStr}</li>`;
+            // TCP
+            if(r.tcp_ok) dHtml += `<li><b>TCP:</b> Connected (${Math.round(r.tcp_time_ms)} ms)</li>`; else dHtml += `<li><b style="color:var(--danger);">TCP:</b> Failed (${r.tcp_error || 'Timeout'})</li>`;
+            // TLS
+            if(r.tcp_ok) { if(r.tls_ok) dHtml += `<li><b>TLS:</b> Handshake OK (${Math.round(r.tls_time_ms)} ms)</li>`; else dHtml += `<li><b style="color:var(--danger);">TLS:</b> Failed (${r.tls_error || 'Timeout'})</li>`; }
+            else { dHtml += `<li><b style="color:var(--text-muted);">TLS:</b> Not reached</li>`; }
+            // HTTP
+            if(r.tls_ok || (r.tcp_ok && target.url.startsWith('http://'))) { if(r.status_code) dHtml += `<li><b>HTTP:</b> Status ${r.status_code} (${Math.round(r.plt_ms)} ms)</li>`; else dHtml += `<li><b style="color:var(--danger);">HTTP:</b> Failed (${r.http_error || 'Timeout'})</li>`; }
+            else { dHtml += `<li><b style="color:var(--text-muted);">HTTP:</b> Not reached</li>`; }
+            
+            document.getElementById('modalDiagTimeline').innerHTML = dHtml;
+            document.getElementById('modalVerdict').innerText = r.verdict;
+            document.getElementById('modalNotes').innerHTML = (r.notes || []).map(n => `<div>- ${n}</div>`).join('');
+            document.getElementById('targetModalOverlay').style.display = 'flex';
+        }
+
+        document.getElementById('viewReportBtn').addEventListener('click', () => {
+            const report = {
+                meta: { version: state.version },
+                self_info: document.getElementById('pubIpCheck').checked ? state.selfInfo : null,
+                whitelist: state.whitelist.filter(t => t.result).map(t => t.result),
+                blacklist: state.blacklist.filter(t => t.result).map(t => t.result)
+            };
+            document.getElementById('jsonExportTextarea').value = JSON.stringify(report, null, 2);
+            
+            const info = report.self_info;
+            document.getElementById('modalSelfInfo').innerHTML = info 
+                ? `IP: ${info.ip || '?'}<br>ISP: ${info.org || '?'}<br>Location: ${info.city || '?'}, ${info.region || '?'}, ${info.country || '?'}`
+                : `<i>IP Lookup Disabled</i>`;
+            document.getElementById('fullReportOverlay').style.display = 'flex';
+        });
+
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+    </script>
+</body>
+</html>

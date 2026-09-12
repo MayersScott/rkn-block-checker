@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rkn-block-checker"
-version = "0.5.1" 
+version = "0.6.0" 
 description = "Diagnose RKN/TSPU internet blocks layer by layer (DNS, TCP, TLS, HTTP)."
 readme = "README.md"
 license = { text = "MIT" }
@@ -47,6 +47,9 @@ Issues = "https://github.com/MayersScott/rkn-block-checker/issues"
 [tool.setuptools.packages.find]
 include = ["rkn_checker*"]
 exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+"rkn_checker" = ["index.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

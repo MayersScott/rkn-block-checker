@@ -25,6 +25,16 @@ That's it. The tool probes a built-in list of sites, classifies each
 failure by layer, and prints a verdict. No config, no setup, nothing to
 edit.
 
+## Web Interface
+
+Run the local web dashboard:
+```bash
+rkn-check startweb
+```
+# or with a custom port: rkn-check startweb --port 8080
+
+Open http://127.0.0.1:7777 in your browser to view real-time diagnostics
+
 ## Example output
 
 ```text
@@ -169,6 +179,7 @@ rkn-check [-h] [--json] [--white] [--black]
           [--white-file PATH] [--black-file PATH] [--url URL]
           [--timeout TIMEOUT] [--workers WORKERS] [-v]
           [--no-self-info] [--identify]
+rkn-check startweb [--port PORT]
 ```
 
 | flag | what it does |
@@ -184,6 +195,7 @@ rkn-check [-h] [--json] [--white] [--black]
 | `--no-self-info` | skip the public-IP lookup at the top of the report |
 | `--identify` | send a self-identifying User-Agent instead of a generic Chrome one. See [Privacy](#privacy-and-threat-model) |
 | `-v` / `-vv` | logging at INFO / DEBUG |
+| `startweb` | start the local web interface on http://127.0.0.1:7777 |
 
 `--white` and `--black` are mutually exclusive. `--url` cannot be combined
 with `--white`/`--black`/`--white-file`/`--black-file` - ad-hoc mode runs

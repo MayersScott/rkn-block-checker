@@ -92,6 +92,10 @@ def check_tls(
     proxy_url: Optional[str] = None,
 ) -> Tuple[bool, Optional[float], Optional[str], Optional[str]]:
     ctx = ssl.create_default_context()
+
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
     start = time.monotonic()
     try:
         sock = _open_socket(host, port, timeout, proxy_url=proxy_url)

@@ -147,8 +147,14 @@ def check_url(
         res.confidence = Confidence.HIGH
         res.notes.append("HTTP 451 - Unavailable For Legal Reasons (explicit)")
         return res
-
+    
     if http_mod.looks_like_stub(probe.body_snippet):
+        if res.status_code == 429:
+            res.verdict = Verdict.DOWN
+            res.confidence = Confidence.LOW
+            res.notes.append("http 429 (antibot rate limit) contained words similar to a block stub")
+            return res
+
         res.verdict = Verdict.HTTP_STUB
         res.confidence = Confidence.HIGH
         res.notes.append(
