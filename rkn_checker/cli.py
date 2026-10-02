@@ -226,6 +226,23 @@ def _run_ad_hoc(
 
 
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    
+    if argv and argv[0] == "startweb":
+        web_parser = argparse.ArgumentParser(
+            prog="rkn-check startweb",
+            description="start the local web page for rkn block checker"
+        )
+        web_parser.add_argument("--port", type=int, default=7777, 
+                                help="port to run the web server on, default is 7777")
+        web_parser.add_argument("--host", type=str, default="127.0.0.1", 
+                                help="host to bind (default: 127.0.0.1)")
+        args = web_parser.parse_args(argv[1:])
+        
+        from .web import run_server
+        return run_server(args.host, args.port)
+    
     parser = _build_parser()
     args = parser.parse_args(argv)
     _setup_logging(args.verbose)

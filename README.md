@@ -25,6 +25,20 @@ That's it. The tool probes a built-in list of sites, classifies each
 failure by layer, and prints a verdict. No config, no setup, nothing to
 edit.
 
+## Web interface
+
+Run the local web dashboard:
+```bash
+rkn-check startweb
+rkn-check startweb --port 8080
+```
+
+Open http://127.0.0.1:7777 in your browser to view streaming diagnostics
+(or use the port you selected). The server binds to `127.0.0.1` by default;
+`--host` selects a different bind address. The web interface uses the built-in
+target lists and supports worker count, timeout and self-identifying headers.
+The CLI's `--proxy` option is not available in the web interface.
+
 ## Example output
 
 ```text
@@ -154,7 +168,7 @@ rkn-check --proxy http://user:pass@proxy.local:8080
 ```
 
 Supported schemes: `socks5`, `socks5h`, `socks4`, `http`. A port is
-mandatory. SOCKS support needs the `proxy` extra (PySocks); without it
+mandatory. All proxy schemes need the `proxy` extra (PySocks); without it
 the flag exits with an error rather than silently probing direct.
 
 **The system DNS lookup is deliberately not proxied.** Its whole job is
@@ -194,6 +208,7 @@ rkn-check [-h] [--json] [--white] [--black]
           [--white-file PATH] [--black-file PATH] [--url URL]
           [--timeout TIMEOUT] [--workers WORKERS] [-v]
           [--no-self-info] [--identify] [--proxy URL]
+rkn-check startweb [--host HOST] [--port PORT]
 ```
 
 | flag | what it does |
@@ -210,6 +225,10 @@ rkn-check [-h] [--json] [--white] [--black]
 | `--identify` | send a self-identifying User-Agent instead of a generic Chrome one. See [Privacy](#privacy-and-threat-model) |
 | `--proxy URL` | route the TCP/TLS/HTTP probes and the DoH control lookup through a proxy. See [Probing through a proxy](#probing-through-a-proxy) |
 | `-v` / `-vv` | logging at INFO / DEBUG |
+| `startweb` | start the local web interface on http://127.0.0.1:7777 |
+
+`startweb --host HOST --port PORT` changes the bind address and port;
+these options apply only to the web server.
 
 `--white` and `--black` are mutually exclusive. `--url` cannot be combined
 with `--white`/`--black`/`--white-file`/`--black-file` - ad-hoc mode runs
@@ -249,7 +268,16 @@ every other run.
 connection - it lets you connect, reads the SNI extension out of the
 ClientHello, and *then* sends a RST or simply stops responding. So we
 have to actually start the TLS handshake to see this. A `TLS_BLOCK` after
-a clean `TCP_OK` is the unambiguous fingerprint of DPI-based blocking.
+a clean `TCP_OK` is consistent with DPI-based blocking, though server-side
+failures can look similar. Since 0.6.0 the raw TLS probe disables certificate
+and hostname verification so an untrusted issuer does not itself become a
+TLS-block signal. The subsequent HTTPS GET still uses Requests' certificate
+verification and can fail on that certificate; a successful raw handshake
+therefore does not establish that the site loaded or its identity was verified.
+
+**HTTP rate limits.** Since 0.6.0, a response with status 429 and a
+stub-marker match is classified as `UNKNOWN` with low confidence, rather
+than `HTTP_STUB`: rate-limit pages can contain the same words as block pages.
 
 ## Verdicts and confidence
 
@@ -310,13 +338,14 @@ the right thing to do in cron scripts and in CI.
 
 **Target GeoIP.** To fill the `GEO` column the tool resolves each target
 through the *system* resolver and POSTs the resulting IP list to
-`ip-api.com` in one batch. Two caveats worth knowing: the request goes
+`ip-api.com` in one batch (up to 100 unique IPs). Two caveats worth knowing: the request goes
 over plain **HTTP** (that's what the free tier offers), and it is **not**
 routed through `--proxy` - so with a proxy configured, the flag shown is
 the country of whatever the local resolver returned, which is exactly the
 answer you don't trust if DNS is being poisoned. The lookup is
 best-effort: it has a 3s timeout and any failure just leaves the column
-empty.
+empty. This lookup fills the CLI's text output; JSON output and web scans
+do not run it.
 
 **No telemetry.** The tool doesn't phone home. The only outbound
 connections are: the per-target probes you asked for, the DoH lookup to
@@ -458,6 +487,8 @@ pip install -e ".[dev]"
 rkn_checker/
   __main__.py     # python -m rkn_checker
   cli.py          # argparse + entry point
+  web.py          # local HTTP server + streaming scan API
+  index.html      # bundled web interface
   core.py         # orchestrates DNS -> TCP -> TLS -> HTTP
   dns.py          # system resolver + Cloudflare DoH (full address sets)
   network.py      # raw TCP and TLS probes
