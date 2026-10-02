@@ -25,15 +25,19 @@ That's it. The tool probes a built-in list of sites, classifies each
 failure by layer, and prints a verdict. No config, no setup, nothing to
 edit.
 
-## Web Interface
+## Web interface
 
 Run the local web dashboard:
 ```bash
 rkn-check startweb
+rkn-check startweb --port 8080
 ```
-# or with a custom port: rkn-check startweb --port 8080
 
-Open http://127.0.0.1:7777 in your browser to view real-time diagnostics
+Open http://127.0.0.1:7777 in your browser to view streaming diagnostics
+(or use the port you selected). The server binds to `127.0.0.1` by default;
+`--host` selects a different bind address. The web interface uses the built-in
+target lists and supports worker count, timeout and self-identifying headers.
+The CLI's `--proxy` option is not available in the web interface.
 
 ## Example output
 
@@ -153,6 +157,31 @@ rkn-check --json | jq '.blacklist | group_by(.verdict)
 rkn-check --json | jq '.blacklist[] | select(.verdict == "TLS_BLOCK" and .tcp_ok)'
 ```
 
+### Probing through a proxy
+
+```bash
+pip install 'rkn-block-checker[proxy]'
+
+rkn-check --proxy socks5://192.168.2.11:1080
+rkn-check --proxy socks5h://127.0.0.1:1080     # DNS resolved proxy-side
+rkn-check --proxy http://user:pass@proxy.local:8080
+```
+
+Supported schemes: `socks5`, `socks5h`, `socks4`, `http`. A port is
+mandatory. All proxy schemes need the `proxy` extra (PySocks); without it
+the flag exits with an error rather than silently probing direct.
+
+**The system DNS lookup is deliberately not proxied.** Its whole job is
+to show what the *local* resolver claims, so it can be compared against
+the DoH control - and that comparison is the only way to see ISP-level
+DNS poisoning. Route both sides through the proxy and you lose the
+signal. Everything else - TCP, TLS, HTTP, and the DoH lookup - goes
+through the proxy.
+
+This is the flag to reach for when you have a vantage point on a
+different path (a router's SOCKS inbound, a VPS, a phone's hotspot) and
+want to compare it against the connection you're sitting on.
+
 ### Use your own target lists
 
 ```bash
@@ -178,8 +207,8 @@ your IP).
 rkn-check [-h] [--json] [--white] [--black]
           [--white-file PATH] [--black-file PATH] [--url URL]
           [--timeout TIMEOUT] [--workers WORKERS] [-v]
-          [--no-self-info] [--identify]
-rkn-check startweb [--port PORT]
+          [--no-self-info] [--identify] [--proxy URL]
+rkn-check startweb [--host HOST] [--port PORT]
 ```
 
 | flag | what it does |
@@ -194,8 +223,12 @@ rkn-check startweb [--port PORT]
 | `--workers N` | thread pool size for parallel checks (default 10) |
 | `--no-self-info` | skip the public-IP lookup at the top of the report |
 | `--identify` | send a self-identifying User-Agent instead of a generic Chrome one. See [Privacy](#privacy-and-threat-model) |
+| `--proxy URL` | route the TCP/TLS/HTTP probes and the DoH control lookup through a proxy. See [Probing through a proxy](#probing-through-a-proxy) |
 | `-v` / `-vv` | logging at INFO / DEBUG |
 | `startweb` | start the local web interface on http://127.0.0.1:7777 |
+
+`startweb --host HOST --port PORT` changes the bind address and port;
+these options apply only to the web server.
 
 `--white` and `--black` are mutually exclusive. `--url` cannot be combined
 with `--white`/`--black`/`--white-file`/`--black-file` - ad-hoc mode runs
@@ -212,6 +245,11 @@ first thing that fails. Whichever layer broke becomes the verdict.
 | TCP  | plain TCP handshake on `:443` | a `RST` is IP-level blackholing. Rare - most ISPs don't bother |
 | TLS  | TLS handshake with SNI = target host | reset/timeout *here*, with TCP working fine, is the classic TSPU/DPI signature: the middlebox sees the SNI and tears the connection down |
 | HTTP | `GET` after handshake completes | 451, or an ISP stub page returning 200 with a "blocked by Roskomnadzor" body |
+
+Alongside the verdict, each row carries the **country of the target's
+IP** (the `GEO` column) - useful for spotting that a "working" site is
+actually being served from somewhere unexpected. See
+[Privacy](#privacy-and-threat-model) for what that lookup costs you.
 
 Two probes are worth calling out:
 
@@ -230,7 +268,16 @@ every other run.
 connection - it lets you connect, reads the SNI extension out of the
 ClientHello, and *then* sends a RST or simply stops responding. So we
 have to actually start the TLS handshake to see this. A `TLS_BLOCK` after
-a clean `TCP_OK` is the unambiguous fingerprint of DPI-based blocking.
+a clean `TCP_OK` is consistent with DPI-based blocking, though server-side
+failures can look similar. Since 0.6.0 the raw TLS probe disables certificate
+and hostname verification so an untrusted issuer does not itself become a
+TLS-block signal. The subsequent HTTPS GET still uses Requests' certificate
+verification and can fail on that certificate; a successful raw handshake
+therefore does not establish that the site loaded or its identity was verified.
+
+**HTTP rate limits.** Since 0.6.0, a response with status 429 and a
+stub-marker match is classified as `UNKNOWN` with low confidence, rather
+than `HTTP_STUB`: rate-limit pages can contain the same words as block pages.
 
 ## Verdicts and confidence
 
@@ -289,10 +336,22 @@ for the human reading the report - the diagnosis itself doesn't depend
 on it. Pass `--no-self-info` to skip that lookup entirely; that's also
 the right thing to do in cron scripts and in CI.
 
+**Target GeoIP.** To fill the `GEO` column the tool resolves each target
+through the *system* resolver and POSTs the resulting IP list to
+`ip-api.com` in one batch (up to 100 unique IPs). Two caveats worth knowing: the request goes
+over plain **HTTP** (that's what the free tier offers), and it is **not**
+routed through `--proxy` - so with a proxy configured, the flag shown is
+the country of whatever the local resolver returned, which is exactly the
+answer you don't trust if DNS is being poisoned. The lookup is
+best-effort: it has a 3s timeout and any failure just leaves the column
+empty. This lookup fills the CLI's text output; JSON output and web scans
+do not run it.
+
 **No telemetry.** The tool doesn't phone home. The only outbound
 connections are: the per-target probes you asked for, the DoH lookup to
 `cloudflare-dns.com` (always on - it's the control side of the DNS
-comparison), and the optional `ipinfo.io` lookup unless you disabled it.
+comparison), the `ip-api.com` GeoIP batch described above, and the
+optional `ipinfo.io` lookup unless you disabled it.
 
 **No exfil of probe results.** Results are printed to stdout. They go
 nowhere else.
@@ -428,6 +487,8 @@ pip install -e ".[dev]"
 rkn_checker/
   __main__.py     # python -m rkn_checker
   cli.py          # argparse + entry point
+  web.py          # local HTTP server + streaming scan API
+  index.html      # bundled web interface
   core.py         # orchestrates DNS -> TCP -> TLS -> HTTP
   dns.py          # system resolver + Cloudflare DoH (full address sets)
   network.py      # raw TCP and TLS probes

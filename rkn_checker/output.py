@@ -196,7 +196,7 @@ def _summary_verdict(
             )
         return (
             C.RED,
-            "Likely in an an RKN-blocked zone (medium confidence).",
+            "Likely in an RKN-blocked zone (medium confidence).",
             "Most blacklist failures match censorship patterns (TLS DPI, "
             "TCP RST), but those signals can also be caused by server-side "
             "issues. A control vantage point would confirm.",
