@@ -1,8 +1,9 @@
+import logging
 from unittest.mock import patch
 
 import pytest
 
-from rkn_checker.cli import _ad_hoc_targets, main
+from rkn_checker.cli import _ad_hoc_targets, _build_parser, _setup_logging, main
 
 
 class TestMutuallyExclusiveFlags:
@@ -10,6 +11,40 @@ class TestMutuallyExclusiveFlags:
         with pytest.raises(SystemExit) as ei:
             main(["--white", "--black"])
         assert ei.value.code == 2
+
+    @patch("rkn_checker.core.check_urls_parallel", return_value=[])
+    def test_white_alone_is_accepted(self, mock_parallel):
+        # README: "--white | check only the control (whitelist) targets".
+        # Only the combination with --black is rejected, not --white itself.
+        assert main(["--json", "--no-self-info", "--white"]) == 0
+        assert mock_parallel.call_count == 1
+
+
+class TestDocumentedDefaults:
+    """Defaults and levels stated in the README's CLI reference."""
+
+    def test_workers_default_is_10(self):
+        # README: "--workers N | thread pool size for parallel checks (default 10)"
+        assert _build_parser().parse_args([]).workers == 10
+
+    @pytest.mark.parametrize("argv, expected", [
+        ([], logging.WARNING),
+        (["-v"], logging.INFO),
+        (["-vv"], logging.DEBUG),
+    ])
+    def test_verbosity_maps_to_log_level(self, argv, expected):
+        # README: "-v / -vv | logging at INFO / DEBUG"
+        verbosity = _build_parser().parse_args(argv).verbose
+        with patch("rkn_checker.cli.logging.basicConfig") as mock_config:
+            _setup_logging(verbosity)
+        assert mock_config.call_args.kwargs["level"] == expected
+
+    @patch("rkn_checker.web.run_server", return_value=0)
+    def test_startweb_default_port_is_7777(self, mock_run):
+        # README: "startweb | start the local web interface on
+        # http://127.0.0.1:7777"
+        assert main(["startweb"]) == 0
+        mock_run.assert_called_once_with("127.0.0.1", 7777)
 
 
 class TestValidation:
